@@ -13,7 +13,7 @@ async function bootstrap() {
 
   const PORT = process.env.PORT || 3001;
   const NODE_ENV = process.env.NODE_ENV || 'development';
-  const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  const CORS_ORIGIN = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000', 'https://lexlucglobalng.vercel.app', 'https://lexlucglobalng-back.vercel.app'];
 
   // Security Middleware
   app.use(helmet());
