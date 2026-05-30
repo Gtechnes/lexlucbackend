@@ -204,11 +204,11 @@ export default function AdminServicesPage() {
         <img src={service.image} alt={service.name} className="w-full h-48 object-cover rounded-lg mb-4" />
       )}
       <p className="text-gray-600 mb-4">{service.description}</p>
-      {service.features?.length > 0 && (
+      {(service.features && service.features.length > 0) && (
         <div className="mb-4">
           <h3 className="font-semibold mb-2">Features:</h3>
           <ul className="list-disc list-inside space-y-1">
-            {service.features.map((f, i) => <li key={i}>{f}</li>)}
+            {service.features!.map((f, i) => <li key={i}>{f}</li>)}
           </ul>
         </div>
       )}

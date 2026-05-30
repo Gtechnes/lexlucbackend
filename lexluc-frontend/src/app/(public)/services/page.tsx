@@ -119,9 +119,9 @@ export default function ServicesPage() {
                       {service.description}
                     </p>
 
-                    {service.features?.length > 0 && (
+                    {(service.features && service.features.length > 0) && (
                       <ul className="mb-4 space-y-1">
-                        {service.features.slice(0, 3).map((feature, i) => (
+                        {service.features!.slice(0, 3).map((feature, i) => (
                           <li key={i} className="text-sm text-gray-500 flex items-start gap-2">
                             <span className="text-blue-500 mt-0.5">•</span>
                             <span className="line-clamp-1">{feature}</span>
