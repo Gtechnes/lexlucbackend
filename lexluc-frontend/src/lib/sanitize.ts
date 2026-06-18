@@ -33,6 +33,12 @@ export function sanitizeHtml(html: string): string {
       'pre',
       'span',
       'div',
+      'table',
+      'thead',
+      'tbody',
+      'tr',
+      'th',
+      'td',
     ],
     ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel', 'class'],
     ALLOWED_URI_REGEXP:

@@ -1,57 +1,181 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useFetch } from '@/lib/hooks';
 import { toursAPI } from '@/lib/api';
-import { Tour, TourStatus } from '@/types';
+import { Tour, ToursResponse } from '@/types';
 import { Card, Loader, EmptyState, Button, Badge, Input } from '@/components/common/UI';
 import Link from 'next/link';
-import { Search, Filter, ChevronDown, Calendar } from 'lucide-react';
+import { Search, Filter, ChevronDown, Calendar, MapPin, Users, DollarSign, Star } from 'lucide-react';
 
-const destinations = ['All', 'Lagos', 'Nairobi', 'Cape Town', 'Cairo', 'Accra', 'Johannesburg', 'Marrakech', 'Zanzibar', 'Victoria Falls', 'Serengeti'];
-const categories = ['All', 'Adventure', 'Cultural', 'Luxury', 'Eco-Tourism', 'Business', 'Wellness', 'Wildlife', 'Historical', 'Beach', 'Mountain'];
+type PublicTourFilter = 'all' | 'featured' | 'upcoming' | 'ongoing' | 'completed';
+
+function formatDate(date?: string) {
+  if (!date) return 'Flexible dates';
+  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatPrice(price: number | string, currency = 'NGN') {
+  const value = typeof price === 'string' ? Number.parseFloat(price) : price;
+  if (!Number.isFinite(value)) return 'Price on request';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+  }).format(value);
+}
+
+function getTourCategory(tour: Tour, now = new Date()) {
+  const start = tour.startDate ? new Date(tour.startDate) : null;
+  const end = tour.endDate ? new Date(tour.endDate) : null;
+
+  if (tour.status === 'CANCELLED') return 'cancelled';
+  if (start && start > now) return 'upcoming';
+  if (start && end && start <= now && end >= now) return 'ongoing';
+  if (end && end < now) return 'completed';
+  return 'published';
+}
+
+function TourCard({ tour, index }: { tour: Tour; index: number }) {
+  const category = getTourCategory(tour);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay: index * 0.05 }}
+    >
+      <Link href={`/tours/${tour.slug}`}>
+        <Card className="overflow-hidden group cursor-pointer h-full flex flex-col transition-all duration-300 hover:shadow-xl border-0">
+          <div className="relative h-56 overflow-hidden bg-gray-100">
+            {tour.featuredImage ? (
+              <img
+                src={tour.featuredImage}
+                alt={tour.title}
+                className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"
+              />
+            ) : (
+              <div className="h-full bg-gradient-to-r from-blue-400 to-purple-400 flex items-center justify-center text-6xl">
+                🌍
+              </div>
+            )}
+            <div className="absolute top-3 left-3 flex flex-wrap gap-2">
+              {tour.featured && <Badge variant="warning">Featured</Badge>}
+              <Badge variant={category === 'ongoing' ? 'success' : category === 'upcoming' ? 'info' : category === 'completed' ? 'default' : 'default'}>
+                {category === 'ongoing' ? 'Ongoing' : category === 'upcoming' ? 'Upcoming' : category === 'completed' ? 'Completed' : 'Published'}
+              </Badge>
+            </div>
+          </div>
+          <div className="p-6 flex flex-col flex-grow">
+            <div className="flex items-center gap-1 text-sm text-gray-500 mb-2">
+              <MapPin className="w-4 h-4" />
+              <span>{tour.destination}</span>
+            </div>
+            <h3 className="text-xl font-bold mb-2 group-hover:text-blue-600 transition-colors">{tour.title}</h3>
+            {tour.departureLocation && (
+              <p className="text-xs text-gray-400 mb-3">Departure: {tour.departureLocation}</p>
+            )}
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+              <Calendar className="w-4 h-4" />
+              <span>{formatDate(tour.startDate)} - {formatDate(tour.endDate)}</span>
+            </div>
+            <p className="text-gray-600 text-sm mb-4 flex-grow line-clamp-2">
+              {tour.shortDescription || tour.description}
+            </p>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-4">
+              {tour.availableSlots !== undefined && (
+                <span className="flex items-center gap-1"><Users className="w-4 h-4" />{tour.availableSlots} slots</span>
+              )}
+              {tour.duration && (
+                <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{tour.duration} days</span>
+              )}
+            </div>
+            <div className="flex justify-between items-center mt-auto">
+              <div>
+                <span className="text-blue-600 font-bold text-lg flex items-center gap-1">
+                  <DollarSign className="w-4 h-4" />{formatPrice(tour.price, tour.currency)}
+                </span>
+                {tour.discount && tour.discount > 0 && (
+                  <span className="text-xs text-green-600 ml-2">-{tour.discount}%</span>
+                )}
+              </div>
+              <Button size="sm" variant="primary">View Details</Button>
+            </div>
+          </div>
+        </Card>
+      </Link>
+    </motion.div>
+  );
+}
 
 export default function ToursPage() {
-  const { data: toursData, loading, error } = useFetch(() => toursAPI.getAll());
-  const response = toursData as any;
-  const tours = response?.data ? response.data : [];
-  
+  const { data: toursData, loading, error } = useFetch<ToursResponse>(() => toursAPI.getAll({ status: 'PUBLISHED' }));
+  const tours = useMemo(() => toursData?.data || [], [toursData]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDestination, setFilterDestination] = useState('All');
   const [filterCategory, setFilterCategory] = useState('All');
-  const [filterStatus, setFilterStatus] = useState<'all' | TourStatus>('all');
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
+  const [filterStatus, setFilterStatus] = useState<PublicTourFilter>('all');
   const [showFilters, setShowFilters] = useState(false);
 
+  const destinations = useMemo(() => ['All', ...Array.from(new Set(tours.map((tour) => tour.destination).filter(Boolean))).sort()], [tours]);
+  const categories = useMemo(() => ['All', ...Array.from(new Set(tours.map((tour) => tour.category).filter(Boolean))).sort()], [tours]);
+  const maxPrice = useMemo(() => tours.reduce((max, tour) => Math.max(max, Number(tour.price) || 0), 0), [tours]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
+
+  const featuredTours = useMemo(() => tours.filter((tour) => tour.featured && tour.status === 'PUBLISHED'), [tours]);
+  const upcomingTours = useMemo(() => tours.filter((tour) => getTourCategory(tour) === 'upcoming'), [tours]);
+  const ongoingTours = useMemo(() => tours.filter((tour) => getTourCategory(tour) === 'ongoing'), [tours]);
+  const completedTours = useMemo(() => tours.filter((tour) => getTourCategory(tour) === 'completed'), [tours]);
+
   const filteredTours = useMemo(() => {
-    return tours.filter((tour: Tour) => {
-      const matchesSearch = tour.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           tour.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           tour.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           (tour.shortDescription && tour.shortDescription.toLowerCase().includes(searchQuery.toLowerCase()));
-      
+    return tours.filter((tour) => {
+      const category = getTourCategory(tour);
+      const matchesSearch = [tour.title, tour.destination, tour.description, tour.shortDescription, tour.category]
+        .filter((value): value is string => typeof value === 'string')
+        .some((value) => value.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesDestination = filterDestination === 'All' || tour.destination === filterDestination;
       const matchesCategory = filterCategory === 'All' || tour.category === filterCategory;
-      const matchesStatus = filterStatus === 'all' || tour.status === filterStatus;
-      const matchesPrice = tour.price >= priceRange[0] && tour.price <= priceRange[1];
-      
+      const matchesStatus = filterStatus === 'all' || (filterStatus === 'featured' ? tour.featured : category === filterStatus);
+      const upperPriceRange = maxPrice || priceRange[1];
+      const matchesPrice = tour.price >= priceRange[0] && tour.price <= upperPriceRange;
+
       return matchesSearch && matchesDestination && matchesCategory && matchesStatus && matchesPrice;
     });
-  }, [tours, searchQuery, filterDestination, filterCategory, filterStatus, priceRange]);
+  }, [tours, searchQuery, filterDestination, filterCategory, filterStatus, priceRange, maxPrice]);
 
-  const featuredTours = useMemo(() => {
-    return tours.filter((tour: Tour) => tour.featured && tour.status === 'PUBLISHED');
-  }, [tours]);
+  const renderTourSection = (title: string, subtitle: string, sectionTours: Tour[], icon?: React.ReactNode) => {
+    if (sectionTours.length === 0) return null;
 
-  const formatDate = (date?: string) => {
-    if (!date) return null;
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return (
+      <section className="py-16 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="flex items-start justify-between gap-4 mb-8"
+          >
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900">{title}</h2>
+              <p className="text-gray-600 mt-1">{subtitle}</p>
+            </div>
+            {icon}
+          </motion.div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {sectionTours.map((tour, index) => (
+              <TourCard key={tour.id} tour={tour} index={index} />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
   };
 
   return (
     <div>
-      {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 text-white py-20">
         <div className="absolute inset-0 bg-black opacity-30" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -60,14 +184,10 @@ export default function ToursPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
           >
-            <h1 className="text-5xl md:text-6xl font-bold mb-4">
-              Discover Your Next Adventure
-            </h1>
+            <h1 className="text-5xl md:text-6xl font-bold mb-4">Discover Your Next Adventure</h1>
             <p className="text-xl text-gray-200 mb-8 max-w-3xl mx-auto">
-              Explore our curated collection of premium tours and travel experiences across Africa and beyond
+              Explore our curated collection of premium tours and travel experiences across Africa and beyond.
             </p>
-            
-            {/* Search Bar */}
             <div className="max-w-2xl mx-auto relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <Input
@@ -81,107 +201,26 @@ export default function ToursPage() {
         </div>
       </section>
 
-      {/* Featured Tours Section */}
-      {featuredTours.length > 0 && (
-        <section className="py-16 bg-gray-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-8"
-            >
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Featured Tours</h2>
-              <p className="text-gray-600">Handpicked experiences for your next journey</p>
-            </motion.div>
-            
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {featuredTours.slice(0, 3).map((tour: Tour, index: number) => (
-                <motion.div
-                  key={tour.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <Link href={`/tours/${tour.slug}`}>
-                    <Card className="overflow-hidden group cursor-pointer h-full flex flex-col">
-                      <div className="relative h-56 overflow-hidden">
-                        {tour.featuredImage ? (
-                          <img
-                            src={tour.featuredImage}
-                            alt={tour.title}
-                            className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"
-                          />
-                        ) : (
-                          <div className="h-full bg-gradient-to-r from-blue-400 to-purple-400 flex items-center justify-center text-6xl">
-                            🌍
-                          </div>
-                        )}
-                        <div className="absolute top-3 right-3">
-                          <Badge variant="success" className="shadow-lg">Featured</Badge>
-                        </div>
-                      </div>
-                      <div className="p-6 flex flex-col flex-grow">
-                        <h3 className="text-xl font-bold mb-2 group-hover:text-blue-600 transition-colors">{tour.title}</h3>
-                        <p className="text-sm text-gray-500 mb-2 flex items-center gap-1">
-                          📍 {tour.destination}
-                        </p>
-                        {tour.departureLocation && (
-                          <p className="text-xs text-gray-400 mb-3">
-                            ✈️ From {tour.departureLocation}
-                          </p>
-                        )}
-                        <p className="text-gray-600 text-sm mb-4 flex-grow line-clamp-2">
-                          {tour.shortDescription || tour.description}
-                        </p>
-                        <div className="flex justify-between items-center mt-auto">
-                          <div>
-                            <span className="text-blue-600 font-bold text-lg">
-                              ₦{Number(tour.price).toLocaleString()}
-                            </span>
-                            {tour.discount && tour.discount > 0 && (
-                              <span className="text-xs text-green-600 ml-2">-{tour.discount}%</span>
-                            )}
-                          </div>
-                          <Button size="sm" variant="primary">
-                            View Details
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+      {renderTourSection('Featured Tours', 'Handpicked experiences selected for exceptional value and demand.', featuredTours, <Star className="w-8 h-8 text-amber-500" />)}
+      {renderTourSection('Upcoming Tours', 'Future departures you can plan and book ahead.', upcomingTours, <Calendar className="w-8 h-8 text-blue-500" />)}
+      {renderTourSection('Ongoing Tours', 'Tours currently running based on their start and end dates.', ongoingTours, <Users className="w-8 h-8 text-emerald-500" />)}
+      {renderTourSection('Completed Tours', 'Past adventures kept visible for reference and inspiration.', completedTours, <Badge variant="default">Completed</Badge>)}
 
-      {/* All Tours Section */}
-      <section className="py-16">
+      <section className="py-16 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-8">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-            >
-              <h2 className="text-3xl font-bold text-gray-900">All Tours</h2>
-              <p className="text-gray-600 mt-1">
-                {filteredTours.length} {filteredTours.length === 1 ? 'tour' : 'tours'} found
-              </p>
+            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+              <h2 className="text-3xl font-bold text-gray-900">All Published Tours</h2>
+              <p className="text-gray-600 mt-1">{filteredTours.length} {filteredTours.length === 1 ? 'tour' : 'tours'} found</p>
             </motion.div>
-            
-            <Button
-              variant="ghost"
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2"
-            >
+
+            <Button variant="ghost" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
               <Filter className="w-4 h-4" />
               Filters
               <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             </Button>
           </div>
 
-          {/* Filters Panel */}
           <AnimatePresence>
             {showFilters && (
               <motion.div
@@ -199,7 +238,7 @@ export default function ToursPage() {
                     <option key={dest} value={dest}>{dest}</option>
                   ))}
                 </select>
-                
+
                 <select
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
@@ -209,23 +248,24 @@ export default function ToursPage() {
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-                
+
                 <select
                   value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value as 'all' | TourStatus)}
+                  onChange={(e) => setFilterStatus(e.target.value as PublicTourFilter)}
                   className="px-4 py-2 border border-gray-300 rounded-lg"
                 >
-                  <option value="all">All Status</option>
-                  <option value="UPCOMING">Upcoming</option>
-                  <option value="PUBLISHED">Published</option>
-                  <option value="COMPLETED">Completed</option>
+                  <option value="all">All Published</option>
+                  <option value="featured">Featured</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="ongoing">Ongoing</option>
+                  <option value="completed">Completed</option>
                 </select>
-                
+
                 <Input
                   type="number"
-                  placeholder="Max price"
-                  value={priceRange[1]}
-                  onChange={(e) => setPriceRange([priceRange[0], parseFloat(e.target.value) || 100000])}
+                  label="Max price"
+                  value={maxPrice || priceRange[1]}
+                  onChange={(e) => setPriceRange([priceRange[0], parseFloat(e.target.value) || maxPrice || 100000])}
                 />
               </motion.div>
             )}
@@ -250,81 +290,8 @@ export default function ToursPage() {
 
           {!loading && !error && filteredTours.length > 0 && (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredTours.map((tour: Tour, index: number) => (
-                <motion.div
-                  key={tour.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <Link href={`/tours/${tour.slug}`}>
-                    <Card className="overflow-hidden group cursor-pointer h-full flex flex-col transition-all duration-300 hover:shadow-xl">
-                      <div className="relative h-56 overflow-hidden">
-                        {tour.featuredImage ? (
-                          <img
-                            src={tour.featuredImage}
-                            alt={tour.title}
-                            className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"
-                          />
-                        ) : (
-                          <div className="h-full bg-gradient-to-r from-blue-400 to-purple-400 flex items-center justify-center text-6xl">
-                            🌍
-                          </div>
-                        )}
-                        {tour.featured && (
-                          <div className="absolute top-3 right-3">
-                            <Badge variant="success" className="shadow-lg">Featured</Badge>
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-6 flex flex-col flex-grow">
-                        <h3 className="text-xl font-bold mb-2 group-hover:text-blue-600 transition-colors">{tour.title}</h3>
-                        <p className="text-sm text-gray-500 mb-2 flex items-center gap-1">
-                          📍 {tour.destination}
-                        </p>
-                        {tour.departureLocation && (
-                          <p className="text-xs text-gray-400 mb-3">
-                            ✈️ From {tour.departureLocation}
-                          </p>
-                        )}
-                        
-                        {/* Date Range */}
-                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
-                          <Calendar className="w-4 h-4" />
-                          {tour.startDate && tour.endDate ? (
-                            <span>{formatDate(tour.startDate)} - {formatDate(tour.endDate)}</span>
-                          ) : (
-                            <span>{tour.duration} days</span>
-                          )}
-                        </div>
-                        
-                        <p className="text-gray-600 text-sm mb-4 flex-grow line-clamp-2">
-                          {tour.shortDescription || tour.description}
-                        </p>
-                        
-                        <div className="flex justify-between items-center mt-auto">
-                          <div>
-                            <span className="text-blue-600 font-bold text-lg">
-                              ₦{Number(tour.price).toLocaleString()}
-                            </span>
-                            {tour.discount && tour.discount > 0 && (
-                              <span className="text-xs text-green-600 ml-2">-{tour.discount}%</span>
-                            )}
-                            {tour.availableSlots !== undefined && tour.availableSlots > 0 && (
-                              <p className="text-xs text-gray-500">
-                                {tour.availableSlots} slots available
-                              </p>
-                            )}
-                          </div>
-                          <Button size="sm" variant="primary">
-                            View Details
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  </Link>
-                </motion.div>
+              {filteredTours.map((tour, index) => (
+                <TourCard key={tour.id} tour={tour} index={index} />
               ))}
             </div>
           )}

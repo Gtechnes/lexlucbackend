@@ -1,19 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useFetch } from '@/lib/hooks';
 import { blogAPI, categoriesAPI } from '@/lib/api';
 import { Card, Loader, EmptyState, Badge } from '@/components/common/UI';
-import { sanitizeHtml } from '@/lib/sanitize';
 import Link from 'next/link';
+import { BlogCategory, BlogPost } from '@/types';
 
 export default function BlogPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const { data: postsData, loading, error } = useFetch(() => 
+  const { data: postsData, loading, error } = useFetch<BlogPost[]>(() =>
     blogAPI.getPublic(selectedCategoryId || undefined)
   );
-  const { data: categoriesData } = useFetch(() => categoriesAPI.getAll());
-  
+  const { data: categoriesData } = useFetch<BlogCategory[]>(() => categoriesAPI.getAll());
+
   const posts = Array.isArray(postsData) ? postsData : [];
   const categories = Array.isArray(categoriesData) ? categoriesData : [];
 
@@ -23,7 +23,6 @@ export default function BlogPage() {
 
   return (
     <div>
-      {/* Header */}
       <section className="bg-gray-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-4xl font-bold">Our Blog</h1>
@@ -31,7 +30,6 @@ export default function BlogPage() {
         </div>
       </section>
 
-      {/* Category Filter */}
       {categories.length > 0 && (
         <section className="bg-gray-50 border-b border-gray-200 py-6">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -47,7 +45,7 @@ export default function BlogPage() {
               >
                 All Posts
               </button>
-              {categories.map((category: any) => (
+              {categories.map((category) => (
                 <button
                   key={category.id}
                   onClick={() => handleCategoryChange(category.id)}
@@ -68,7 +66,6 @@ export default function BlogPage() {
         </section>
       )}
 
-      {/* Blog Posts */}
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {loading && <Loader />}
@@ -90,7 +87,7 @@ export default function BlogPage() {
 
           {!loading && !error && posts.length > 0 && (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {posts.map((post: any) => (
+              {posts.map((post) => (
                 <Card key={post.id} className="overflow-hidden flex flex-col">
                   {post.image ? (
                     <img
@@ -104,9 +101,10 @@ export default function BlogPage() {
                     </div>
                   )}
                   <div className="p-6 flex flex-col flex-grow">
-                    {post.category && (
-                      <Badge variant="info">{post.category.name}</Badge>
-                    )}
+                    {post.category && <Badge variant="info">{post.category.name}</Badge>}
+                    {(post.tags || []).slice(0, 3).map((tag) => (
+                      <Badge key={tag} variant="default" className="mr-2 text-xs">{tag}</Badge>
+                    ))}
                     <h3 className="text-xl font-bold mt-2 mb-2">{post.title}</h3>
                     <p className="text-gray-600 text-sm mb-4 flex-grow">
                       {post.excerpt || post.content.replace(/<[^>]*>/g, '').substring(0, 150)}...
@@ -119,11 +117,9 @@ export default function BlogPage() {
                           ? new Date(post.createdAt).toLocaleDateString()
                           : 'Recently added'}
                       </span>
+                      <span>Views: {post.views || 0}</span>
                     </div>
-                    <Link
-                      href={`/blog/${post.slug}`}
-                      className="text-blue-600 hover:text-blue-700 font-semibold"
-                    >
+                    <Link href={`/blog/${post.slug}`} className="text-blue-600 hover:text-blue-700 font-semibold">
                       Read more →
                     </Link>
                   </div>

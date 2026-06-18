@@ -4,28 +4,43 @@ import {
   DashboardStats,
   Service,
   Tour,
+  TourHomeResponse,
   ToursResponse,
   Booking,
   BookingStatus,
   CreateBookingRequest,
   BlogPost,
   BlogCategory,
+  BlogStats,
+  BlogAiGenerationOptions,
+  GeneratedBlogDraft,
+  BlogAssistRequest,
+  BlogAiSources,
   ContactMessage,
+  ContactStatus,
+  ContactStats,
   CreateContactRequest,
   User,
 } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const DEBUG_API = process.env.NEXT_PUBLIC_API_DEBUG === 'true';
+
+function debugLog(message: string, ...args: unknown[]) {
+  if (DEBUG_API) {
+    console.debug(`[API] ${message}`, ...args);
+  }
+}
 
 /**
  * Simple in-memory cache for GET requests
  */
-const cache = new Map<string, any>();
+const cache = new Map<string, unknown>();
 
 /**
  * In-flight request tracking to prevent duplicate requests
  */
-const inFlightRequests = new Map<string, Promise<any>>();
+const inFlightRequests = new Map<string, Promise<unknown>>();
 
 /**
  * Retry logic with exponential backoff
@@ -44,6 +59,17 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: num
       setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
     ),
   ]);
+}
+
+async function parseResponseJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) return undefined as T;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    throw new Error(`Invalid JSON response from ${response.url}: ${error instanceof Error ? error.message : 'Unexpected end of JSON input'}`);
+  }
 }
 
 /**
@@ -78,15 +104,23 @@ async function apiRequest<T>(
   // Check cache for GET requests
   const method = options.method || 'GET';
   const cacheKey = `${method}:${endpoint}`;
+  debugLog(`${method} ${url}`, options.body ? (() => {
+    try {
+      return JSON.parse(options.body as string);
+    } catch {
+      return options.body;
+    }
+  })() : '');
   
   // Return cached data for GET requests
   if (method === 'GET' && cache.has(cacheKey)) {
-    return cache.get(cacheKey);
+    debugLog(`cache hit ${method} ${url}`);
+    return cache.get(cacheKey) as T;
   }
 
   // Prevent duplicate in-flight requests (request deduplication)
   if (method === 'GET' && inFlightRequests.has(cacheKey)) {
-    return inFlightRequests.get(cacheKey);
+    return inFlightRequests.get(cacheKey) as Promise<T>;
   }
 
   // Execute request with retry logic
@@ -103,7 +137,7 @@ async function apiRequest<T>(
   try {
     const data = await requestPromise;
     return data;
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Enhance error message for debugging
     if (err instanceof TypeError && err.message === 'Failed to fetch') {
       const enhancedError = new Error(
@@ -116,9 +150,11 @@ async function apiRequest<T>(
     }
     throw err;
   } finally {
-    // Clean up in-flight request tracking
+    // Clean up in-flight request tracking and stale GET cache after mutations
     if (method === 'GET') {
       inFlightRequests.delete(cacheKey);
+    } else {
+      cache.clear();
     }
   }
 }
@@ -136,53 +172,35 @@ async function executeWithRetry<T>(
 ): Promise<T> {
   try {
     const response = await fetchWithTimeout(url, options, 15000);
+    debugLog(`response ${method} ${url} ${response.status}`);
 
     if (!response.ok) {
-      let errorData: any = {};
-      try {
-        errorData = await response.json();
-      } catch {}
+      const errorData = await parseResponseJson<Record<string, unknown>>(response);
       
-      // Build error message with status for proper retry filtering
       const statusErrorMsg = `API error: ${response.status}`;
+      console.error(`[API Error] ${method} ${url}`, statusErrorMsg, errorData);
       
       // Handle rate limiting - wait and retry once
       if (response.status === 429) {
-        const retryAfter = response.headers.get('Retry-After');
-        let waitTime = 5000; // Default 5 second wait for rate limiting
-        
-        if (retryAfter) {
-          if (!isNaN(parseInt(retryAfter))) {
-            waitTime = parseInt(retryAfter) * 1000;
-          } else {
-            const retryDate = new Date(retryAfter);
-            waitTime = Math.max(2000, retryDate.getTime() - Date.now());
-          }
-        }
-        
-        // Wait and retry once - don't throw immediately
-        console.warn(`Rate limited (${response.status}). Waiting ${waitTime}ms before retrying...`);
-        await sleep(waitTime);
-        
-        // Retry after waiting (use last retry for rate limits)
-        if (retries > 0) {
-          return executeWithRetry<T>(url, options, cacheKey, method, retries - 1, backoffMs);
-        }
-        
-        // If no retries left, throw
-        throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+        const errorMsg = 'Server busy (rate limited). Please try again in a moment.';
+        console.warn(`Rate limited (${response.status}).`);
+        throw new Error(errorMsg);
       }
       
       // Don't retry client errors (400-499) - these are intentional responses
       if (response.status >= 400 && response.status < 500) {
-        throw new Error(errorData.message || statusErrorMsg);
+        const message = errorData && typeof errorData.message === 'string'
+          ? errorData.message
+          : undefined;
+        throw new Error(message || statusErrorMsg);
       }
       
       // For server errors (5xx), throw with "API error" prefix to allow retry
       throw new Error(statusErrorMsg);
     }
 
-    const data = await response.json();
+    const data = await parseResponseJson<T>(response);
+    debugLog(`response body ${method} ${url}`, data);
 
     // Cache GET requests
     if (method === 'GET') {
@@ -190,12 +208,13 @@ async function executeWithRetry<T>(
     }
 
     return data;
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Only retry on network errors (like "Failed to fetch"), not API errors
     const isNetworkError = err instanceof TypeError && err.message === 'Failed to fetch';
     if (retries > 0 && isNetworkError) {
       const waitTime = backoffMs * Math.pow(2, 2 - retries);
-      console.warn(`Request failed: ${err.message}. Retrying in ${waitTime}ms...`);
+      const message = err instanceof Error ? err.message : 'Request failed';
+      console.warn(`Request failed: ${message}. Retrying in ${waitTime}ms...`);
       await sleep(waitTime);
       return executeWithRetry<T>(url, options, cacheKey, method, retries - 1, backoffMs);
     }
@@ -237,6 +256,14 @@ export const authAPI = {
 export const servicesAPI = {
   getAll: (): Promise<Service[]> =>
     apiRequest<Service[]>('/services', { method: 'GET' }),
+
+  getPublic: (): Promise<Service[]> =>
+    apiRequest<Service[]>('/services/public', { method: 'GET' }),
+
+  getFeatured: (limit?: number): Promise<Service[]> => {
+    const url = limit ? `/services/featured?limit=${limit}` : '/services/featured';
+    return apiRequest<Service[]>(url, { method: 'GET' });
+  },
 
   getOne: (id: string): Promise<Service> =>
     apiRequest<Service>(`/services/${id}`, { method: 'GET' }),
@@ -281,18 +308,69 @@ export const toursAPI = {
     return apiRequest<ToursResponse>(url, { method: 'GET' });
   },
 
+  getAdmin: (params?: {
+    page?: string;
+    limit?: string;
+    status?: string;
+    destination?: string;
+    featured?: boolean;
+    search?: string;
+  }): Promise<ToursResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page);
+    if (params?.limit) searchParams.set('limit', params.limit);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.destination) searchParams.set('destination', params.destination);
+    if (params?.featured !== undefined) searchParams.set('featured', String(params.featured));
+    if (params?.search) searchParams.set('search', params.search);
+    const url = searchParams.toString() ? `/tours/admin?${searchParams}` : '/tours/admin';
+    return apiRequest<ToursResponse>(url, { method: 'GET' });
+  },
+
+  getHome: (): Promise<TourHomeResponse> =>
+    apiRequest('/tours/home', { method: 'GET' }),
+
+  getPast: (limit?: number): Promise<Tour[]> => {
+    const url = limit ? `/tours/past?limit=${limit}` : '/tours/past';
+    return apiRequest<Tour[]>(url, { method: 'GET' });
+  },
+
+  getCompleted: (limit?: number): Promise<Tour[]> => {
+    const url = limit ? `/tours/completed?limit=${limit}` : '/tours/completed';
+    return apiRequest<Tour[]>(url, { method: 'GET' });
+  },
+
+  getCurrent: (limit?: number): Promise<Tour[]> => {
+    const url = limit ? `/tours/current?limit=${limit}` : '/tours/current';
+    return apiRequest<Tour[]>(url, { method: 'GET' });
+  },
+
+  getOngoing: (limit?: number): Promise<Tour[]> => {
+    const url = limit ? `/tours/ongoing?limit=${limit}` : '/tours/ongoing';
+    return apiRequest<Tour[]>(url, { method: 'GET' });
+  },
+
+  getUpcoming: (limit?: number): Promise<Tour[]> => {
+    const url = limit ? `/tours/upcoming?limit=${limit}` : '/tours/upcoming';
+    return apiRequest<Tour[]>(url, { method: 'GET' });
+  },
+
+  getCategorized: (): Promise<{ past: Tour[]; current: Tour[]; upcoming: Tour[] }> =>
+    apiRequest('/tours/categorized', { method: 'GET' }),
+
   getOne: (id: string): Promise<Tour> =>
-    apiRequest<Tour>(`/tours/${id}`, { method: 'GET' }),
+    apiRequest<Tour>(`/tours/${encodeURIComponent(id)}`, { method: 'GET' }),
 
   getBySlug: (slug: string): Promise<Tour> =>
-    apiRequest<Tour>(`/tours/slug/${slug}`, { method: 'GET' }),
+    apiRequest<Tour>(`/tours/slug/${encodeURIComponent(slug)}`, { method: 'GET' }),
 
   getStats: (): Promise<DashboardStats> =>
     apiRequest<DashboardStats>('/tours/stats', { method: 'GET' }),
 
   search: (query: string, limit?: number): Promise<Tour[]> => {
-    const url = limit ? `/tours/search?q=${query}&limit=${limit}` : `/tours/search?q=${query}`;
-    return apiRequest<Tour[]>(url, { method: 'GET' });
+    const searchParams = new URLSearchParams({ q: query });
+    if (limit) searchParams.set('limit', String(limit));
+    return apiRequest<Tour[]>(`/tours/search?${searchParams}`, { method: 'GET' });
   },
 
   getFeatured: (limit?: number): Promise<Tour[]> => {
@@ -301,12 +379,12 @@ export const toursAPI = {
   },
 
   getByStatus: (status: string, limit?: number): Promise<Tour[]> => {
-    const url = limit ? `/tours/status/${status}?limit=${limit}` : `/tours/status/${status}`;
+    const url = limit ? `/tours/status/${encodeURIComponent(status)}?limit=${limit}` : `/tours/status/${encodeURIComponent(status)}`;
     return apiRequest<Tour[]>(url, { method: 'GET' });
   },
 
   getByDestination: (destination: string, limit?: number): Promise<Tour[]> => {
-    const url = limit ? `/tours/destination/${destination}?limit=${limit}` : `/tours/destination/${destination}`;
+    const url = limit ? `/tours/destination/${encodeURIComponent(destination)}?limit=${limit}` : `/tours/destination/${encodeURIComponent(destination)}`;
     return apiRequest<Tour[]>(url, { method: 'GET' });
   },
 
@@ -317,22 +395,22 @@ export const toursAPI = {
     }),
 
   update: (id: string, data: Partial<Omit<Tour, 'id' | 'createdAt' | 'updatedAt' | 'bookingsCount'>>): Promise<Tour> =>
-    apiRequest<Tour>(`/tours/${id}`, {
+    apiRequest<Tour>(`/tours/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
 
   publish: (id: string): Promise<Tour> =>
-    apiRequest<Tour>(`/tours/${id}/publish`, { method: 'PATCH' }),
+    apiRequest<Tour>(`/tours/${encodeURIComponent(id)}/publish`, { method: 'PATCH' }),
 
   unpublish: (id: string): Promise<Tour> =>
-    apiRequest<Tour>(`/tours/${id}/unpublish`, { method: 'PATCH' }),
+    apiRequest<Tour>(`/tours/${encodeURIComponent(id)}/unpublish`, { method: 'PATCH' }),
 
   toggleFeatured: (id: string): Promise<Tour> =>
-    apiRequest<Tour>(`/tours/${id}/feature`, { method: 'PATCH' }),
+    apiRequest<Tour>(`/tours/${encodeURIComponent(id)}/feature`, { method: 'PATCH' }),
 
   delete: (id: string): Promise<void> =>
-    apiRequest<void>(`/tours/${id}`, { method: 'DELETE' }),
+    apiRequest<void>(`/tours/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
 /**
@@ -427,7 +505,28 @@ export const blogAPI = {
    * Deprecated: Use getPublic() or getAdmin() instead
    */
   getAll: (): Promise<BlogPost[]> =>
-    apiRequest<BlogPost[]>('/blog', { method: 'GET' }),
+    apiRequest<BlogPost[]>('/blog/admin', { method: 'GET' }),
+
+  getStats: (): Promise<BlogStats> =>
+    apiRequest<BlogStats>('/blog/stats', { method: 'GET' }),
+
+  getAiSources: (sourceSelection = {}): Promise<BlogAiSources> =>
+    apiRequest<BlogAiSources>('/blog/ai/sources', {
+      method: 'POST',
+      body: JSON.stringify(sourceSelection),
+    }),
+
+  generateAiBlog: (data: BlogAiGenerationOptions): Promise<GeneratedBlogDraft> =>
+    apiRequest<GeneratedBlogDraft>('/blog/ai/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  assistAiBlog: (data: BlogAssistRequest): Promise<Record<string, unknown>> =>
+    apiRequest('/blog/ai/assist', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 
   getOne: (id: string): Promise<BlogPost> =>
     apiRequest<BlogPost>(`/blog/${id}`, { method: 'GET' }),
@@ -447,6 +546,27 @@ export const blogAPI = {
       body: JSON.stringify(data),
     }),
 
+  autosave: (id: string, data: Partial<Omit<BlogPost, 'id' | 'createdAt' | 'updatedAt'>>): Promise<BlogPost> =>
+    apiRequest<BlogPost>(`/blog/${id}/autosave`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  publish: (id: string): Promise<BlogPost> =>
+    apiRequest<BlogPost>(`/blog/${id}/publish`, {
+      method: 'POST',
+    }),
+
+  archive: (id: string): Promise<BlogPost> =>
+    apiRequest<BlogPost>(`/blog/${id}/archive`, {
+      method: 'POST',
+    }),
+
+  incrementViews: (id: string): Promise<BlogPost> =>
+    apiRequest<BlogPost>(`/blog/${id}/increment-views`, {
+      method: 'POST',
+    }),
+
   delete: (id: string): Promise<void> =>
     apiRequest<void>(`/blog/${id}`, { method: 'DELETE' }),
 };
@@ -455,11 +575,30 @@ export const blogAPI = {
  * Contacts API
  */
 export const contactsAPI = {
-  getAll: (): Promise<ContactMessage[]> =>
-    apiRequest<ContactMessage[]>('/contacts', { method: 'GET' }),
+  getAll: (params?: {
+    page?: string;
+    limit?: string;
+    status?: string;
+    search?: string;
+    sort?: string;
+    sortDir?: 'asc' | 'desc';
+  }): Promise<{ data: ContactMessage[]; meta: { total: number; page: number; limit: number; totalPages: number } }> => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page);
+    if (params?.limit) searchParams.set('limit', params.limit);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.sort) searchParams.set('sort', params.sort);
+    if (params?.sortDir) searchParams.set('sortDir', params.sortDir);
+    const url = searchParams.toString() ? `/contacts?${searchParams}` : '/contacts';
+    return apiRequest(url, { method: 'GET' });
+  },
+
+  getStats: (): Promise<ContactStats> =>
+    apiRequest<ContactStats>('/contacts/stats', { method: 'GET' }),
 
   getOne: (id: string): Promise<ContactMessage> =>
-    apiRequest<ContactMessage>(`/contacts/${id}`, { method: 'GET' }),
+    apiRequest<ContactMessage>(`/contacts/${encodeURIComponent(id)}`, { method: 'GET' }),
 
   create: (data: CreateContactRequest): Promise<ContactMessage> =>
     apiRequest<ContactMessage>('/contacts', {
@@ -468,13 +607,22 @@ export const contactsAPI = {
     }),
 
   markAsRead: (id: string): Promise<ContactMessage> =>
-    apiRequest<ContactMessage>(`/contacts/${id}/read`, { method: 'PATCH' }),
+    apiRequest<ContactMessage>(`/contacts/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
+
+  updateStatus: (id: string, status: ContactStatus): Promise<ContactMessage> =>
+    apiRequest<ContactMessage>(`/contacts/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
 
   respond: (id: string, response: string): Promise<ContactMessage> =>
-    apiRequest<ContactMessage>(`/contacts/${id}/respond`, {
+    apiRequest<ContactMessage>(`/contacts/${encodeURIComponent(id)}/respond`, {
       method: 'PATCH',
       body: JSON.stringify({ response }),
     }),
+
+  close: (id: string): Promise<ContactMessage> =>
+    apiRequest<ContactMessage>(`/contacts/${encodeURIComponent(id)}/close`, { method: 'PATCH' }),
 
   delete: (id: string): Promise<void> =>
     apiRequest<void>(`/contacts/${id}`, { method: 'DELETE' }),

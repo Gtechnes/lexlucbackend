@@ -42,14 +42,30 @@ export const FOOTER_LINKS = {
 };
 
 export const SOCIAL_LINKS = {
-  facebook: 'https://facebook.com/lexlucglobal',
-  twitter: 'https://twitter.com/lexlucglobal',
-  linkedin: 'https://linkedin.com/company/lexluc-global',
-  instagram: 'https://instagram.com/lexlucglobal',
+  instagram: {
+    label: 'Instagram',
+    url: 'https://www.instagram.com/lexlucglobal/',
+  },
+  linkedin: {
+    label: 'LinkedIn',
+    url: 'https://www.linkedin.com/in/lexluc-global-services-a5775a3b7/',
+  },
+  x: {
+    label: 'X',
+    url: 'https://x.com/lexlucglobal',
+  },
+  youtube: {
+    label: 'YouTube',
+    url: 'https://www.youtube.com/channel/UC84lAddkMxBGV1ykJLzPoWA',
+  },
+  tiktok: {
+    label: 'TikTok',
+    url: 'https://www.tiktok.com/@lexlucglobal',
+  },
 };
 
 export const CONTACT_INFO = {
-  email: 'info@lexlucglobal.ng',
+  email: 'Lexlucglobalservices@gmail.com',
   phones: ['2349041532442', '17042931522'],
   phoneDisplay: ['+2349041532442', '+17042931522'],
   address: '57/59 Flayket Plaza, Opposite Ago Iwoye Junction, Agric Isawo Road, Ikorodu Lagos.',

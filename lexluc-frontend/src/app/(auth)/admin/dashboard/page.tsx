@@ -164,7 +164,7 @@ export default function AdminDashboard() {
                   >
                     <div>
                       <p className="font-semibold text-gray-900">
-                        {contact.name}
+                        {contact.fullName}
                       </p>
                       <p className="text-sm text-gray-600">{contact.email}</p>
                     </div>

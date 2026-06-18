@@ -9,6 +9,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { BlogModule } from './blog/blog.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ContactsModule } from './contacts/contacts.module';
+import { EmailModule } from './email/email.module';
 import { AdminModule } from './admin/admin.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { HealthController } from './health.controller';
@@ -32,6 +33,7 @@ import { MulterModule } from '@nestjs/platform-express';
     BlogModule,
     CategoriesModule,
     ContactsModule,
+    EmailModule,
     AdminModule,
     UploadsModule,
   ],

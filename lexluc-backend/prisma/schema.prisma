@@ -31,13 +31,22 @@ enum BookingStatus {
 
 enum ContactStatus {
   NEW
-  READ
+  IN_PROGRESS
   RESPONDED
+  CLOSED
 }
 
 enum ServiceStatus {
   DRAFT
   PUBLISHED
+}
+
+enum BlogPostStatus {
+  DRAFT
+  UNDER_REVIEW
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
 }
 
 enum TourStatus {
@@ -89,6 +98,8 @@ model Service {
   order       Int      @default(0)
   isActive    Boolean  @default(true)
   status      ServiceStatus @default(DRAFT)
+  featured    Boolean  @default(false)
+  serviceBanner String?
 
   // Features
   features    String[] @default([])
@@ -250,8 +261,21 @@ model BlogPost {
   content   String   @db.Text  // Can be HTML or JSON (TipTap format)
   excerpt   String?
   image     String?  // Featured image
+  status    BlogPostStatus @default(DRAFT)
   isPublished Boolean @default(false)
   publishedAt DateTime?
+  scheduledFor DateTime?
+
+  // AI content workflow
+  aiGenerated Boolean @default(false)
+  sourceTourIds String[] @default([])
+  lastAutosavedAt DateTime?
+
+  // Analytics
+  views Int @default(0)
+  likes Int @default(0)
+  shares Int @default(0)
+  commentsCount Int @default(0)
 
   // Category relation (nullable for backward compatibility)
   categoryId String?  @db.Uuid
@@ -260,6 +284,8 @@ model BlogPost {
   // SEO
   metaTitle       String?
   metaDescription String?
+  seoKeywords     String[] @default([])
+  tags            String[] @default([])
 
   // Relations
   media     Media[]
@@ -269,9 +295,12 @@ model BlogPost {
   deletedAt DateTime? // Soft delete
 
   @@index([slug])
+  @@index([status])
   @@index([isPublished])
   @@index([publishedAt])
+  @@index([scheduledFor])
   @@index([categoryId])
+  @@index([views])
   @@map("blog_posts")
 }
 
@@ -281,15 +310,15 @@ model BlogPost {
 
 model ContactMessage {
   id          String          @id @default(uuid()) @db.Uuid
-  firstName   String
-  lastName    String
+  fullName    String
   email       String
   phone       String?
   company     String?
   subject     String
   message     String          @db.Text
   status      ContactStatus   @default(NEW)
-  
+  isRead      Boolean         @default(false)
+
   // Admin response
   response    String?         @db.Text
   respondedAt DateTime?
@@ -304,6 +333,7 @@ model ContactMessage {
 
   @@index([email])
   @@index([status])
+  @@index([isRead])
   @@index([userId])
   @@map("contact_messages")
 }

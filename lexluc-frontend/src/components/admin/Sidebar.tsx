@@ -10,7 +10,7 @@ const MENU_ITEMS = [
   { label: 'Tours', href: '/admin/tours', icon: '🗺️' },
   { label: 'Bookings', href: '/admin/bookings', icon: '📅' },
   { label: 'Blog Posts', href: '/admin/blog', icon: '📝' },
-  { label: 'Contact Messages', href: '/admin/contacts', icon: '💬' },
+  { label: 'Contact Messages', href: '/admin/contact-messages', icon: '💬' },
   { label: 'Users', href: '/admin/users', icon: '👥' },
 ];
 

@@ -1,4 +1,15 @@
-import { IsString, IsOptional, IsNumber, IsBoolean, IsDateString, IsArray, IsEnum, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsDateString,
+  IsArray,
+  IsEnum,
+  Min,
+  Max,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum TourStatus {
@@ -9,12 +20,25 @@ export enum TourStatus {
   PUBLISHED = 'PUBLISHED',
 }
 
-export class CreateTourDto {
+export class TourItineraryDto {
+  @IsNumber()
+  @Type(() => Number)
+  day: number;
+
   @IsString()
   title: string;
 
   @IsString()
-  slug: string;
+  description: string;
+}
+
+export class CreateTourDto {
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  slug?: string;
 
   @IsOptional()
   @IsString()
@@ -42,8 +66,9 @@ export class CreateTourDto {
   @IsDateString()
   endDate?: string;
 
+  @IsOptional()
   @IsEnum(TourStatus)
-  status: TourStatus;
+  status?: TourStatus;
 
   @IsNumber()
   @Type(() => Number)
@@ -77,7 +102,9 @@ export class CreateTourDto {
   gallery?: string[];
 
   @IsOptional()
-  itinerary?: { day: number; title: string; description: string }[];
+  @ValidateNested({ each: true })
+  @Type(() => TourItineraryDto)
+  itinerary?: TourItineraryDto[];
 
   @IsOptional()
   @IsArray()
@@ -105,7 +132,6 @@ export class CreateTourDto {
   @IsString()
   seoKeywords?: string;
 
-  // Legacy fields for backward compatibility
   @IsOptional()
   @IsString()
   content?: string;
@@ -129,37 +155,5 @@ export class CreateTourDto {
 
   @IsOptional()
   @IsString()
-  serviceId?: string;
-}
-
-// Update DTO - simple interface without PartialType
-export interface UpdateTourDto {
-  title?: string;
-  slug?: string;
-  category?: string;
-  destination?: string;
-  departureLocation?: string;
-  shortDescription?: string;
-  description?: string;
-  startDate?: string;
-  endDate?: string;
-  status?: TourStatus;
-  price?: number;
-  currency?: string;
-  availableSlots?: number;
-  discount?: number;
-  featuredImage?: string;
-  gallery?: string[];
-  itinerary?: { day: number; title: string; description: string }[];
-  inclusions?: string[];
-  exclusions?: string[];
-  featured?: boolean;
-  seoTitle?: string;
-  seoDescription?: string;
-  seoKeywords?: string;
-  content?: string;
-  duration?: number;
-  maxParticipants?: number;
-  highlights?: string[];
   serviceId?: string;
 }

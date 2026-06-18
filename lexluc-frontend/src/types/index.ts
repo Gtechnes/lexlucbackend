@@ -29,9 +29,11 @@ export interface Service {
   content?: string;
   icon?: string;
   image?: string;
+  serviceBanner?: string;
   order: number;
   isActive: boolean;
   status?: ServiceStatus;
+  featured?: boolean;
   features?: string[];
   ctaText?: string;
   ctaLink?: string;
@@ -101,6 +103,13 @@ export interface ToursResponse {
   };
 }
 
+export interface TourHomeResponse {
+  featured: Tour[];
+  upcoming: Tour[];
+  current: Tour[];
+  past: Tour[];
+}
+
 // Bookings
 export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
 export type PaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED';
@@ -138,14 +147,76 @@ export interface CreateBookingRequest {
 }
 
 // Blog Posts
-export interface BlogCategory {
-  id: string;
-  name: string;
-  slug: string;
-  description?: string;
-  color?: string;
-  createdAt: string;
-  updatedAt: string;
+export type BlogPostStatus = 'DRAFT' | 'UNDER_REVIEW' | 'SCHEDULED' | 'PUBLISHED' | 'ARCHIVED';
+export type BlogArticleType =
+  | 'TRAVEL_GUIDE'
+  | 'DESTINATION_SPOTLIGHT'
+  | 'TOUR_HIGHLIGHTS'
+  | 'TRAVEL_TIPS'
+  | 'COMPANY_EXPERIENCE_STORY'
+  | 'CUSTOM';
+export type BlogTone = 'Professional' | 'Luxury' | 'Informative' | 'Conversational' | 'Corporate' | 'Inspirational';
+export type BlogArticleLength = 'SHORT' | 'MEDIUM' | 'LONG';
+export type BlogSeoFocus = 'SEO_OPTIMIZED' | 'READER_FOCUSED' | 'BALANCED';
+export type BlogTargetAudience =
+  | 'Families'
+  | 'Tourists'
+  | 'Corporate Travelers'
+  | 'Students'
+  | 'International Visitors'
+  | 'Business Travelers';
+export type BlogAssistAction =
+  | 'IMPROVE_WRITING'
+  | 'EXPAND_CONTENT'
+  | 'SHORTEN_CONTENT'
+  | 'IMPROVE_SEO'
+  | 'GENERATE_META_TAGS'
+  | 'GENERATE_TAGS'
+  | 'GENERATE_CTA';
+
+export interface BlogAiSourceSelection {
+  tourIds?: string[];
+  destination?: string;
+  category?: string;
+  featured?: boolean;
+  upcoming?: boolean;
+  completed?: boolean;
+}
+
+export interface BlogAiGenerationOptions {
+  sourceSelection: BlogAiSourceSelection;
+  articleType: BlogArticleType;
+  customTopic?: string;
+  title?: string;
+  tone: BlogTone;
+  articleLength: BlogArticleLength;
+  seoFocus: BlogSeoFocus;
+  targetAudience: BlogTargetAudience;
+}
+
+export interface GeneratedBlogDraft {
+  title: string;
+  excerpt: string;
+  content: string;
+  metaTitle: string;
+  metaDescription: string;
+  seoKeywords: string[];
+  tags: string[];
+  image: string;
+  sourceTourIds: string[];
+  aiGenerated: boolean;
+}
+
+export interface BlogAssistRequest {
+  sourceSelection: BlogAiSourceSelection;
+  action: BlogAssistAction;
+  title?: string;
+  content: string;
+  excerpt?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  seoKeywords?: string[];
+  tags?: string[];
 }
 
 export interface BlogPost {
@@ -157,43 +228,105 @@ export interface BlogPost {
   image?: string;
   categoryId?: string;
   category?: BlogCategory;
+  status: BlogPostStatus;
   isPublished: boolean;
   publishedAt?: string;
+  scheduledFor?: string;
+  aiGenerated: boolean;
+  sourceTourIds: string[];
+  lastAutosavedAt?: string;
+  views: number;
+  likes: number;
+  shares: number;
+  commentsCount: number;
   metaTitle?: string;
   metaDescription?: string;
+  seoKeywords?: string[];
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
 }
 
+export interface BlogStats {
+  total: number;
+  draft: number;
+  underReview: number;
+  scheduled: number;
+  published: number;
+  archived: number;
+  views: number;
+  likes: number;
+  shares: number;
+  mostPopular: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    views: number;
+    likes: number;
+    shares: number;
+    publishedAt?: string;
+  }>;
+}
+
+export interface BlogAiSources {
+  tours: Array<{
+    id: string;
+    title: string;
+    destination: string;
+    category: string;
+    featured: boolean;
+    status: string;
+    image?: string;
+  }>;
+  destinations: string[];
+  categories: string[];
+}
+
+export interface BlogCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  color?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 // Contact Messages
-export type ContactStatus = 'NEW' | 'READ' | 'RESPONDED';
+export type ContactStatus = 'NEW' | 'IN_PROGRESS' | 'RESPONDED' | 'CLOSED';
 
 export interface ContactMessage {
   id: string;
-  firstName: string;
-  lastName: string;
-  name?: string;
+  fullName: string;
   email: string;
   phone?: string;
   company?: string;
   subject: string;
   message: string;
   status: ContactStatus;
-  isRead?: boolean;
+  isRead: boolean;
   response?: string;
   respondedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface ContactStats {
+  total: number;
+  new: number;
+  inProgress: number;
+  responded: number;
+  closed: number;
+  unread: number;
+}
+
 export interface CreateContactRequest {
-  firstName: string;
-  lastName: string;
+  fullName: string;
   email: string;
   phone?: string;
   company?: string;
   subject: string;
   message: string;
+  honeypot?: string;
 }
 
 // Dashboard Stats

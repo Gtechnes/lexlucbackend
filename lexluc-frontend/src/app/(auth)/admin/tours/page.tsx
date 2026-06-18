@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useFetch, useMutation, useToast } from '@/lib/hooks';
 import { toursAPI } from '@/lib/api';
-import { Tour, TourStatus, TourItineraryDay } from '@/types';
+import { Tour, TourStatus, TourItineraryDay, ToursResponse } from '@/types';
 import { Button, Input, Select, Badge } from '@/components/common/UI';
 import { ImageUpload } from '@/components/common/ImageUpload';
 import { Modal } from '@/components/common/UI';
@@ -15,10 +15,18 @@ const tourCategories = ['Adventure', 'Cultural', 'Luxury', 'Eco-Tourism', 'Busin
 const currencies = ['NGN', 'USD', 'EUR', 'GBP', 'CAD'];
 const destinations = ['Lagos', 'Nairobi', 'Cape Town', 'Cairo', 'Accra', 'Johannesburg', 'Marrakech', 'Zanzibar', 'Victoria Falls', 'Serengeti'];
 
+function getTourCategory(tour: Tour, now = new Date()) {
+  const start = tour.startDate ? new Date(tour.startDate) : null;
+  const end = tour.endDate ? new Date(tour.endDate) : null;
+
+  if (tour.status === 'CANCELLED') return 'cancelled';
+  if (start && start > now) return 'upcoming';
+  if (start && end && start <= now && end >= now) return 'ongoing';
+  if (end && end < now) return 'completed';
+  return 'published';
+}
+
 export default function AdminToursPage() {
-  const { data: toursData, loading, refetch } = useFetch(() => toursAPI.getAll());
-  const response = toursData as any;
-  const tours = response?.data ? response.data : [];
   const { success, error: showError } = useToast();
 
   const [showModal, setShowModal] = useState(false);
@@ -27,6 +35,18 @@ export default function AdminToursPage() {
   const [filterStatus, setFilterStatus] = useState<'all' | TourStatus>('all');
   const [filterDestination, setFilterDestination] = useState<'all' | string>('all');
   const [filterFeatured, setFilterFeatured] = useState<'all' | 'true' | 'false'>('all');
+
+  const fetchAdminTours = useCallback(() => toursAPI.getAdmin({
+    page: '1',
+    limit: '100',
+    status: filterStatus === 'all' ? undefined : filterStatus,
+    destination: filterDestination === 'all' ? undefined : filterDestination,
+    featured: filterFeatured === 'all' ? undefined : filterFeatured === 'true',
+    search: searchQuery || undefined,
+  }), [filterStatus, filterDestination, filterFeatured, searchQuery]);
+
+  const { data: toursData, loading, refetch } = useFetch<ToursResponse>(fetchAdminTours, [fetchAdminTours]);
+  const tours = useMemo(() => toursData?.data || [], [toursData]);
 
   interface FormData {
     title: string;
@@ -86,31 +106,19 @@ export default function AdminToursPage() {
     { day: 1, title: '', description: '' },
   ]);
 
-  const createMutation = useMutation<Tour, Partial<FormData>>((data) => toursAPI.create(data as any));
-  const updateMutation = useMutation<Tour, Partial<FormData>>((data) => toursAPI.update(editingId!, data as any));
+  const createMutation = useMutation<Tour, Parameters<typeof toursAPI.create>[0]>((data) => toursAPI.create(data));
+  const updateMutation = useMutation<Tour, Parameters<typeof toursAPI.update>[1]>((data) => toursAPI.update(editingId!, data));
 
-  const filteredTours = useMemo(() => {
-    return tours.filter((tour: Tour) => {
-      const matchesSearch = tour.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           tour.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           tour.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = filterStatus === 'all' || tour.status === filterStatus;
-      const matchesDestination = filterDestination === 'all' || tour.destination === filterDestination;
-      const matchesFeatured = filterFeatured === 'all' || 
-                               (filterFeatured === 'true' && tour.featured) ||
-                               (filterFeatured === 'false' && !tour.featured);
-      return matchesSearch && matchesStatus && matchesDestination && matchesFeatured;
-    });
-  }, [tours, searchQuery, filterStatus, filterDestination, filterFeatured]);
-
-  const stats = {
+  const stats = useMemo(() => ({
     total: tours.length,
     published: tours.filter((t: Tour) => t.status === 'PUBLISHED').length,
     draft: tours.filter((t: Tour) => t.status === 'DRAFT').length,
     featured: tours.filter((t: Tour) => t.featured).length,
-    upcoming: tours.filter((t: Tour) => t.status === 'UPCOMING').length,
-    completed: tours.filter((t: Tour) => t.status === 'COMPLETED').length,
-  };
+    upcoming: tours.filter((t: Tour) => getTourCategory(t) === 'upcoming').length,
+    ongoing: tours.filter((t: Tour) => getTourCategory(t) === 'ongoing').length,
+    completed: tours.filter((t: Tour) => getTourCategory(t) === 'completed').length,
+    cancelled: tours.filter((t: Tour) => t.status === 'CANCELLED').length,
+  }), [tours]);
 
   const generateSlug = (title: string) => {
     return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -167,7 +175,7 @@ export default function AdminToursPage() {
       status: tour.status,
       price: tour.price,
       currency: tour.currency || 'NGN',
-      availableSlots: tour.availableSlots || tour.maxParticipants || null,
+      availableSlots: tour.availableSlots ?? tour.maxParticipants ?? null,
       discount: tour.discount || 0,
       featuredImage: tour.featuredImage || tour.image || '',
       gallery: tour.gallery || [],
@@ -237,6 +245,7 @@ export default function AdminToursPage() {
       exclusions: formData.exclusions.filter(e => e.trim()),
       gallery: formData.gallery,
       itinerary: itineraryDays.filter(d => d.title || d.description),
+      availableSlots: formData.availableSlots ?? undefined,
     };
 
     try {
@@ -249,8 +258,8 @@ export default function AdminToursPage() {
       }
       setShowModal(false);
       refetch();
-    } catch (err: any) {
-      showError(err.message || 'Failed to save tour');
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to save tour');
     }
   };
 
@@ -261,18 +270,44 @@ export default function AdminToursPage() {
       await toursAPI.delete(id);
       success('Tour deleted successfully');
       refetch();
-    } catch (err: any) {
-      showError(err.message || 'Failed to delete tour');
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to delete tour');
     }
   };
 
   const handleToggleFeatured = async (tour: Tour) => {
     try {
+      console.log('[AdminTours] Toggling featured tour', tour.id);
       await toursAPI.toggleFeatured(tour.id);
       success(`${tour.featured ? 'Unfeatured' : 'Featured'} tour successfully`);
       refetch();
-    } catch (err: any) {
-      showError(err.message || 'Failed to update tour');
+    } catch (err: unknown) {
+      console.error('[AdminTours] Failed to toggle featured tour', err);
+      showError(err instanceof Error ? err.message : 'Failed to update tour');
+    }
+  };
+
+  const handlePublish = async (tour: Tour) => {
+    try {
+      console.log('[AdminTours] Publishing tour', tour.id);
+      await toursAPI.publish(tour.id);
+      success('Tour published successfully');
+      refetch();
+    } catch (err: unknown) {
+      console.error('[AdminTours] Failed to publish tour', err);
+      showError(err instanceof Error ? err.message : 'Failed to publish tour');
+    }
+  };
+
+  const handleUnpublish = async (tour: Tour) => {
+    try {
+      console.log('[AdminTours] Saving tour as draft', tour.id);
+      await toursAPI.unpublish(tour.id);
+      success('Tour saved as draft');
+      refetch();
+    } catch (err: unknown) {
+      console.error('[AdminTours] Failed to save draft', err);
+      showError(err instanceof Error ? err.message : 'Failed to save draft');
     }
   };
 
@@ -284,7 +319,7 @@ export default function AdminToursPage() {
       try {
         const url = await uploadToCloudinary(file, 'tour');
         uploadedUrls.push(url);
-      } catch (error) {
+      } catch {
         showError(`Failed to upload ${file.name}`);
       }
     }
@@ -299,7 +334,7 @@ export default function AdminToursPage() {
   };
 
   const getStatusBadge = (status: TourStatus) => {
-    const variants: Record<TourStatus, any> = {
+    const variants: Record<TourStatus, 'success' | 'default' | 'info' | 'error'> = {
       'PUBLISHED': 'success',
       'DRAFT': 'default',
       'UPCOMING': 'info',
@@ -320,7 +355,7 @@ export default function AdminToursPage() {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-4 rounded-lg shadow">
           <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
           <div className="text-sm text-gray-600">Total Tours</div>
@@ -340,6 +375,14 @@ export default function AdminToursPage() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="bg-white p-4 rounded-lg shadow">
           <div className="text-2xl font-bold text-purple-600">{stats.upcoming}</div>
           <div className="text-sm text-gray-600">Upcoming</div>
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="bg-white p-4 rounded-lg shadow">
+          <div className="text-2xl font-bold text-emerald-600">{stats.ongoing}</div>
+          <div className="text-sm text-gray-600">Ongoing</div>
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="bg-white p-4 rounded-lg shadow">
+          <div className="text-2xl font-bold text-gray-600">{stats.completed}</div>
+          <div className="text-sm text-gray-600">Completed</div>
         </motion.div>
       </div>
 
@@ -411,14 +454,14 @@ export default function AdminToursPage() {
                   </div>
                 </td>
               </tr>
-            ) : filteredTours.length === 0 ? (
+            ) : tours.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   No tours found
                 </td>
               </tr>
             ) : (
-              filteredTours.map((tour: Tour, index: number) => (
+              tours.map((tour: Tour, index: number) => (
                 <motion.tr
                   key={tour.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -461,6 +504,13 @@ export default function AdminToursPage() {
                     {tour.featured && <Star className="w-4 h-4 text-yellow-500 inline-block ml-2" fill="currentColor" />}
                   </td>
                   <td className="px-4 py-3 text-right space-x-2">
+                    <button
+                      onClick={() => tour.status === 'PUBLISHED' ? handleUnpublish(tour) : handlePublish(tour)}
+                      className={tour.status === 'PUBLISHED' ? 'text-purple-600 hover:text-purple-800' : 'text-green-600 hover:text-green-800'}
+                      title={tour.status === 'PUBLISHED' ? 'Save as Draft' : 'Publish'}
+                    >
+                      {tour.status === 'PUBLISHED' ? <Badge variant="default">Draft</Badge> : <Badge variant="success">Publish</Badge>}
+                    </button>
                     <button
                       onClick={() => handleToggleFeatured(tour)}
                       className={tour.featured ? 'text-yellow-600' : 'text-gray-400 hover:text-yellow-600'}

@@ -6,22 +6,22 @@ export class AdminService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getStats() {
-    // Access the mock data arrays through the prisma service
-    const prisma = this.prisma as any;
-    const services = prisma.services || [];
-    const tours = prisma.tours || [];
-    const bookings = prisma.bookings || [];
-    const blogPosts = prisma.blogPosts || [];
-    const contacts = prisma.contacts || [];
-    const users = prisma.users || [];
+    const [users, services, tours, bookings, blogPosts, unreadContacts] = await Promise.all([
+      this.prisma.user.count({ where: { deletedAt: null } }),
+      this.prisma.service.count({ where: { deletedAt: null } }),
+      this.prisma.tour.count({ where: { deletedAt: null } }),
+      this.prisma.booking.count({ where: { deletedAt: null } }),
+      this.prisma.blogPost.count({ where: { deletedAt: null } }),
+      this.prisma.contactMessage.count({ where: { deletedAt: null, isRead: false } }),
+    ]);
 
     return {
-      users: users.length,
-      services: services.length,
-      tours: tours.length,
-      bookings: bookings.length,
-      posts: blogPosts.length,
-      unreadContacts: contacts.filter((c: any) => c.status === 'NEW').length,
+      users,
+      services,
+      tours,
+      bookings,
+      posts: blogPosts,
+      unreadContacts,
     };
   }
 }

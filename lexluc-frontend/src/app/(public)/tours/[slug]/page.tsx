@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { notFound, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { Card, Loader, Badge, Button, Input } from '@/components/common/UI';
 import { toursAPI, bookingsAPI } from '@/lib/api';
-import { Tour, TourStatus, CreateBookingRequest } from '@/types';
+import { Tour, TourStatus, TourItineraryDay, CreateBookingRequest } from '@/types';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { Calendar, Users, MapPin, Clock, ArrowLeft, Check, X } from 'lucide-react';
 import { useMutation, useToast } from '@/lib/hooks';
@@ -32,16 +32,25 @@ export default function TourDetailPage() {
   useEffect(() => {
     const fetchTour = async () => {
       try {
+        console.log('[TourDetails] Fetching tour by slug', slug);
         setLoading(true);
         const data = await toursAPI.getBySlug(slug);
-        if (!data) {
-          setError('Tour not found');
+        console.log('[TourDetails] Tour response', data);
+        if (!data || data.status !== 'PUBLISHED') {
+          console.warn('[TourDetails] Tour is not published', data);
+          notFound();
           return;
         }
         setTour(data);
         setError(null);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load tour');
+      } catch (err: unknown) {
+        console.error('[TourDetails] Failed to load tour', err);
+        const message = err instanceof Error ? err.message : '';
+        if (message.includes('404') || message.includes('not found')) {
+          notFound();
+          return;
+        }
+        setError(message || 'Failed to load tour');
         setTour(null);
       } finally {
         setLoading(false);
@@ -68,10 +77,12 @@ export default function TourDetailPage() {
     }
 
     try {
+      console.log('[TourDetails] Submitting booking', { tourId: tour.id, travelers: bookingData.numberOfTravelers });
       await createBookingMutation.mutate({
         ...bookingData,
         tourId: tour.id,
       });
+      console.log('[TourDetails] Booking submitted');
       success('Booking submitted successfully! We will contact you shortly.');
       setShowBookingForm(false);
       setBookingData({
@@ -81,13 +92,14 @@ export default function TourDetailPage() {
         numberOfTravelers: 1,
         specialRequests: '',
       });
-    } catch (err: any) {
-      showError(err.message || 'Failed to submit booking');
+    } catch (err: unknown) {
+      console.error('[TourDetails] Failed to submit booking', err);
+      showError(err instanceof Error ? err.message : 'Failed to submit booking');
     }
   };
 
   const getStatusVariant = (status: TourStatus) => {
-    const variants: Record<TourStatus, any> = {
+    const variants: Record<TourStatus, 'success' | 'info' | 'error' | 'default'> = {
       'PUBLISHED': 'success',
       'UPCOMING': 'info',
       'COMPLETED': 'success',
@@ -105,6 +117,24 @@ export default function TourDetailPage() {
       day: 'numeric',
       year: 'numeric'
     });
+  };
+
+  const isBookable = () => {
+    if (!tour) return false;
+    if (tour.status === 'CANCELLED' || tour.status === 'DRAFT') return false;
+    if (tour.endDate) {
+      const end = new Date(tour.endDate);
+      if (!Number.isNaN(end.getTime()) && end < new Date()) return false;
+    }
+    return !(tour.availableSlots !== null && tour.availableSlots !== undefined && tour.availableSlots === 0);
+  };
+
+  const getBookingButtonText = () => {
+    if (!tour) return 'Book Now';
+    if (tour.status === 'CANCELLED') return 'Tour Cancelled';
+    if (tour.endDate && new Date(tour.endDate) < new Date()) return 'Tour Completed';
+    if (tour.availableSlots !== null && tour.availableSlots !== undefined && tour.availableSlots === 0) return 'Fully Booked';
+    return 'Book Now';
   };
 
   const allImages = tour?.featuredImage 
@@ -135,8 +165,17 @@ export default function TourDetailPage() {
     );
   }
 
-  const parsedItinerary = tour.itinerary 
-    ? (typeof tour.itinerary === 'string' ? JSON.parse(tour.itinerary) : tour.itinerary)
+  const parsedItinerary = tour.itinerary
+    ? (typeof tour.itinerary === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(tour.itinerary);
+            } catch (error) {
+              console.error('[TourDetails] Failed to parse itinerary JSON', error);
+              return [];
+            }
+          })()
+        : tour.itinerary)
     : [];
 
   return (
@@ -234,7 +273,7 @@ export default function TourDetailPage() {
                     Day-by-Day Itinerary
                   </h2>
                   <div className="space-y-4">
-                    {parsedItinerary.map((day: any, idx: number) => (
+                    {parsedItinerary.map((day: TourItineraryDay, idx: number) => (
                       <Card key={idx} className="p-5">
                         <div className="flex items-start gap-4">
                           <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
@@ -260,7 +299,7 @@ export default function TourDetailPage() {
                 >
                   <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                     <Check className="w-6 h-6 text-green-600" />
-                    What's Included
+                    What&apos;s Included
                   </h2>
                   <Card className="p-5">
                     <ul className="grid md:grid-cols-2 gap-2">
@@ -284,7 +323,7 @@ export default function TourDetailPage() {
                 >
                   <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                     <X className="w-6 h-6 text-red-600" />
-                    What's Not Included
+                    What&apos;s Not Included
                   </h2>
                   <Card className="p-5">
                     <ul className="grid md:grid-cols-2 gap-2">
@@ -332,9 +371,9 @@ export default function TourDetailPage() {
                   <Button
                     className="w-full mb-4"
                     onClick={() => setShowBookingForm(true)}
-                    disabled={tour.status === 'CANCELLED' || (tour.availableSlots !== null && tour.availableSlots === 0)}
+                    disabled={!isBookable()}
                   >
-                    {tour.status === 'CANCELLED' ? 'Tour Cancelled' : tour.availableSlots !== null && tour.availableSlots === 0 ? 'Fully Booked' : 'Book Now'}
+                    {getBookingButtonText()}
                   </Button>
 
                   <div className="border-t pt-4 space-y-3 text-sm">
@@ -407,7 +446,7 @@ export default function TourDetailPage() {
                   label="Number of Travelers"
                   type="number"
                   min="1"
-                  max={tour.availableSlots || undefined}
+                  max={tour.availableSlots ?? undefined}
                   value={bookingData.numberOfTravelers}
                   onChange={(e) => setBookingData({ ...bookingData, numberOfTravelers: parseInt(e.target.value) })}
                   required
