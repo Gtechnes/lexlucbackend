@@ -18,7 +18,32 @@ export class ServicesService {
     this.logger.log('Fetching all services');
     return (this.prisma as any).service.findMany({
       where: { deletedAt: null },
-      orderBy: { order: 'asc' },
+      orderBy: [{ featured: 'desc' }, { order: 'asc' }],
+    });
+  }
+
+  findPublic() {
+    this.logger.log('Fetching published active services');
+    return (this.prisma as any).service.findMany({
+      where: {
+        deletedAt: null,
+        status: 'PUBLISHED',
+        isActive: true,
+      },
+      orderBy: [{ featured: 'desc' }, { order: 'asc' }],
+    });
+  }
+
+  findFeatured(limit?: number) {
+    return (this.prisma as any).service.findMany({
+      where: {
+        deletedAt: null,
+        status: 'PUBLISHED',
+        isActive: true,
+        featured: true,
+      },
+      orderBy: [{ order: 'asc' }],
+      take: limit,
     });
   }
 

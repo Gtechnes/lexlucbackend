@@ -20,6 +20,16 @@ export class ServicesController {
     return this.servicesService.findAll(page, limit);
   }
 
+  @Get('public')
+  findPublic() {
+    return this.servicesService.findPublic();
+  }
+
+  @Get('featured')
+  findFeatured(@Query('limit') limit?: string) {
+    return this.servicesService.findFeatured(limit ? parseInt(limit) : undefined);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.servicesService.findOne(id);
