@@ -1,46 +1,70 @@
 'use client';
 
-import { useState, useCallback, useEffect, DependencyList } from 'react';
+import { useState, useCallback, useEffect, useRef, DependencyList } from 'react';
 
 /**
  * Generic data fetching hook with loading, error, and empty states
+ * 
+ * Uses a ref to always call the latest fetcher without causing
+ * the useEffect to re-run when the fetcher identity changes.
  */
 export function useFetch<T>(
   fetcher: () => Promise<T>,
-  deps: DependencyList = []
+  _deps: DependencyList = [],
+  options?: { enabled?: boolean }
 ) {
+  const { enabled = true } = options || {};
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const fetcherRef = useRef(fetcher);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  });
 
   const fetch = useCallback(async () => {
+    if (!enabled) return;
     try {
       setLoading(true);
       setError(null);
-      const result = await fetcher();
-      setData(result);
-    } catch (err: any) {
-      let errorMsg = err.message || err.toString() || 'An error occurred';
-      
-      // Handle network errors
-      if (err instanceof TypeError && err.message === 'Failed to fetch') {
-        errorMsg = `Network error: Cannot connect to the backend server. ` +
-          `Please ensure the backend is running at ${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}.`;
+      const result = await fetcherRef.current();
+      if (mountedRef.current) {
+        setData(result);
       }
-      
-      setError(errorMsg);
-      console.error('Fetch error details:', {
-        message: err?.message,
-        name: err?.name,
-        stack: err?.stack,
-        cause: err?.cause,
-        url: process.env.NEXT_PUBLIC_API_URL,
-        errorObject: err,
-      });
+    } catch (err: any) {
+      if (mountedRef.current) {
+        let errorMsg = err.message || err.toString() || 'An error occurred';
+        
+        if (err instanceof TypeError && err.message === 'Failed to fetch') {
+          errorMsg = `Network error: Cannot connect to the backend server. ` +
+            `Please ensure the backend is running at ${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}.`;
+        }
+        
+        setError(errorMsg);
+        console.error('Fetch error details:', {
+          message: err?.message,
+          name: err?.name,
+          stack: err?.stack,
+          cause: err?.cause,
+          url: process.env.NEXT_PUBLIC_API_URL,
+          errorObject: err,
+        });
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
-  }, [fetcher, ...deps]);
+  }, [enabled]);
 
   useEffect(() => {
     fetch();

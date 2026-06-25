@@ -254,8 +254,13 @@ export const authAPI = {
  * Services API
  */
 export const servicesAPI = {
-  getAll: (): Promise<Service[]> =>
-    apiRequest<Service[]>('/services', { method: 'GET' }),
+  getAll: (params?: { page?: string; limit?: string }): Promise<{ data: Service[]; meta: { total: number; page: number; limit: number; totalPages: number } }> => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page);
+    if (params?.limit) searchParams.set('limit', params.limit);
+    const url = searchParams.toString() ? `/services?${searchParams}` : '/services';
+    return apiRequest<{ data: Service[]; meta: { total: number; page: number; limit: number; totalPages: number } }>(url, { method: 'GET' });
+  },
 
   getPublic: (): Promise<Service[]> =>
     apiRequest<Service[]>('/services/public', { method: 'GET' }),
@@ -264,6 +269,9 @@ export const servicesAPI = {
     const url = limit ? `/services/featured?limit=${limit}` : '/services/featured';
     return apiRequest<Service[]>(url, { method: 'GET' });
   },
+
+  getStats: (): Promise<{ total: number; active: number; published: number; featured: number }> =>
+    apiRequest('/services/stats', { method: 'GET' }),
 
   getOne: (id: string): Promise<Service> =>
     apiRequest<Service>(`/services/${id}`, { method: 'GET' }),
@@ -281,6 +289,12 @@ export const servicesAPI = {
     apiRequest<Service>(`/services/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+
+  reorder: (id: string, newOrder: number): Promise<Service> =>
+    apiRequest<Service>(`/services/${id}/reorder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ newOrder }),
     }),
 
   delete: (id: string): Promise<void> =>

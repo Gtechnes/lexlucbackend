@@ -17,7 +17,7 @@ ALTER TABLE "blog_posts"
 
 UPDATE "blog_posts"
 SET
-  "status" = CASE WHEN "isPublished" THEN 'PUBLISHED' ELSE 'DRAFT' END,
+  "status" = CASE WHEN "isPublished" THEN 'PUBLISHED'::"BlogPostStatus" ELSE 'DRAFT'::"BlogPostStatus" END,
   "publishedAt" = COALESCE("publishedAt", CASE WHEN "isPublished" THEN "createdAt" ELSE NULL END);
 
 CREATE INDEX "blog_posts_status_idx" ON "blog_posts"("status");
