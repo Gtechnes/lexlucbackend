@@ -1,10 +1,6 @@
 'use client';
 
-<<<<<<< HEAD
 import { FormEvent, useEffect, useState, useMemo } from 'react';
-=======
-import { FormEvent, useEffect, useState } from 'react';
->>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
 import { useFetch, useToast } from '@/lib/hooks';
 import { blogAPI, categoriesAPI, clearCache, toursAPI } from '@/lib/api';
 import {
@@ -101,15 +97,9 @@ export default function AdminBlogPage() {
   const { data: categoriesData } = useFetch<BlogCategory[]>(() => categoriesAPI.getAll());
   const { data: toursData, loading: toursLoading } = useFetch<ToursResponse>(() => toursAPI.getAdmin({ limit: '100' }));
   const { data: statsData, refetch: refetchStats } = useFetch<BlogStats>(() => blogAPI.getStats());
-<<<<<<< HEAD
-  const posts = useMemo(() => Array.isArray(postsData) ? postsData : [], [postsData]);
+const posts = useMemo(() => Array.isArray(postsData) ? postsData : [], [postsData]);
   const categories = useMemo(() => Array.isArray(categoriesData) ? categoriesData : [], [categoriesData]);
   const tours = useMemo(() => Array.isArray(toursData?.data) ? toursData.data : [], [toursData]);
-=======
-  const posts = Array.isArray(postsData) ? postsData : [];
-  const categories = Array.isArray(categoriesData) ? categoriesData : [];
-  const tours = Array.isArray(toursData?.data) ? toursData.data : [];
->>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
   const stats = statsData || ({} as BlogStats);
   const { success: showSuccess, error: showError } = useToast();
 
@@ -374,13 +364,8 @@ export default function AdminBlogPage() {
 
   const plainText = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-<<<<<<< HEAD
-  const selectedTourIds = useMemo(() => new Set(formData.sourceTourIds), [formData.sourceTourIds]);
+const selectedTourIds = useMemo(() => new Set(formData.sourceTourIds), [formData.sourceTourIds]);
   const selectedTours = useMemo(() => tours.filter((tour: Tour) => selectedTourIds.has(tour.id)), [tours, selectedTourIds]);
-=======
-  const selectedTourIds = new Set(formData.sourceTourIds);
-  const selectedTours = tours.filter((tour: Tour) => selectedTourIds.has(tour.id));
->>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
   const hasAiSource = aiOptions.sourceSelection.tourIds?.length || aiOptions.sourceSelection.destination || aiOptions.sourceSelection.category || aiOptions.sourceSelection.featured || aiOptions.sourceSelection.upcoming || aiOptions.sourceSelection.completed;
 
   return (

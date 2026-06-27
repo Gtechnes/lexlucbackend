@@ -189,13 +189,8 @@ async function executeWithRetry<T>(
       
       // Don't retry client errors (400-499) - these are intentional responses
       if (response.status >= 400 && response.status < 500) {
-<<<<<<< HEAD
         const message = errorData?.message
           ? (Array.isArray(errorData.message) ? errorData.message.join(', ') : String(errorData.message))
-=======
-        const message = errorData && typeof errorData.message === 'string'
-          ? errorData.message
->>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
           : undefined;
         throw new Error(message || statusErrorMsg);
       }
