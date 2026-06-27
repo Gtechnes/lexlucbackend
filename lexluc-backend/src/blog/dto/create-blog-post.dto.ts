@@ -10,7 +10,10 @@ import {
   ValidateNested,
   IsNotEmpty,
 } from 'class-validator';
+<<<<<<< HEAD
 import { Type } from 'class-transformer';
+=======
+>>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
 
 export enum BlogPostStatus {
   DRAFT = 'DRAFT',
@@ -176,10 +179,15 @@ export class BlogSourceSelectionDto {
 }
 
 export class GenerateBlogDto {
+<<<<<<< HEAD
   @IsOptional()
   @ValidateNested()
   @Type(() => BlogSourceSelectionDto)
   sourceSelection?: BlogSourceSelectionDto;
+=======
+  @ValidateNested()
+  sourceSelection: BlogSourceSelectionDto;
+>>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
 
   @IsEnum(BlogArticleType)
   articleType: BlogArticleType;
@@ -246,10 +254,15 @@ export class AssistBlogDto {
   @IsString({ each: true })
   tags?: string[];
 
+<<<<<<< HEAD
   @IsOptional()
   @ValidateNested()
   @Type(() => BlogSourceSelectionDto)
   sourceSelection?: BlogSourceSelectionDto;
+=======
+  @ValidateNested()
+  sourceSelection: BlogSourceSelectionDto;
+>>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
 
   @IsEnum(BlogAssistAction)
   action: BlogAssistAction;

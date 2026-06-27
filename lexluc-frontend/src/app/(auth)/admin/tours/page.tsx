@@ -239,12 +239,15 @@ export default function AdminToursPage() {
       return;
     }
 
+<<<<<<< HEAD
     const toIsoDate = (date: string): string | undefined => {
       if (!date) return undefined;
       const d = new Date(date);
       return d instanceof Date && !Number.isNaN(d.getTime()) ? d.toISOString() : undefined;
     };
 
+=======
+>>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
     const submitData = {
       ...formData,
       inclusions: formData.inclusions.filter(i => i.trim()),
@@ -252,8 +255,11 @@ export default function AdminToursPage() {
       gallery: formData.gallery,
       itinerary: itineraryDays.filter(d => d.title || d.description),
       availableSlots: formData.availableSlots ?? undefined,
+<<<<<<< HEAD
       startDate: toIsoDate(formData.startDate),
       endDate: toIsoDate(formData.endDate),
+=======
+>>>>>>> 0eb0d894d67885f2e5d7084ca6293c4ed4db5ac0
     };
 
     try {
